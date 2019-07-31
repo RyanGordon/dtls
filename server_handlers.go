@@ -35,6 +35,10 @@ func serverHandshakeHandler(c *Conn) error {
 			for _, extension := range h.extensions {
 				switch e := extension.(type) {
 				case *extensionSupportedEllipticCurves:
+					if len(e.ellipticCurves) == 0 {
+						// 16FEFD00000000000000010052010000460000000000000046FEFD5D40E0CAFF88ABEB9B448ED882B2A9FF6D53B4D9BF05B4D210C66489B0175B9600000008C02BC02CC02FC0300100001400170000000A0006000400180019000B00020100
+						return fmt.Errorf("Client requested one or more Elliptic Curves that are unsupported")
+					}
 					c.namedCurve = e.ellipticCurves[0]
 				case *extensionUseSRTP:
 					profile, ok := findMatchingSRTPProfile(e.protectionProfiles, c.localSRTPProtectionProfiles)
@@ -286,7 +290,7 @@ func serverFlightHandler(c *Conn) (bool, error) {
 		if c.localPSKCallback == nil {
 			extensions = append(extensions, []extension{
 				&extensionSupportedEllipticCurves{
-					ellipticCurves: []namedCurve{namedCurveX25519, namedCurveP256},
+					ellipticCurves: []namedCurve{namedCurveX25519, namedCurveP256, namedCurveP384, namedCurveP521},
 				},
 				&extensionSupportedPointFormats{
 					pointFormats: []ellipticCurvePointFormat{ellipticCurvePointFormatUncompressed},
