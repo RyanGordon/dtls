@@ -64,6 +64,7 @@ func (c *cryptoGCM) encrypt(pkt *recordLayer, raw []byte) ([]byte, error) {
 }
 
 func (c *cryptoGCM) decrypt(in []byte) ([]byte, error) {
+	fmt.Printf("cryptoGCM.decrypt(%+v)\n", in)
 	var h recordLayerHeader
 	err := h.Unmarshal(in)
 	switch {
@@ -78,6 +79,11 @@ func (c *cryptoGCM) decrypt(in []byte) ([]byte, error) {
 
 	nonce := append(append([]byte{}, c.remoteWriteIV[:4]...), in[recordLayerHeaderSize:recordLayerHeaderSize+8]...)
 	out := in[recordLayerHeaderSize+8:]
+	//in[13:21]
+
+	// header (13 bytes) | nonce (8 bytes) | ciphertext (N bytes)
+
+	//out = in[21:] // 40
 
 	additionalData := generateAEADAdditionalData(&h, len(out)-cryptoGCMTagLength)
 	fmt.Printf("c.remoteGCM.Open(%+v, %+v, %+v, %+v)\n", out[:0], nonce, out, additionalData)
