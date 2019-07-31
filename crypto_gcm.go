@@ -80,6 +80,7 @@ func (c *cryptoGCM) decrypt(in []byte) ([]byte, error) {
 	out := in[recordLayerHeaderSize+8:]
 
 	additionalData := generateAEADAdditionalData(&h, len(out)-cryptoGCMTagLength)
+	fmt.Printf("c.remoteGCM.Open(%+v, %+v, %+v, %+v)\n", out[:0], nonce, out, additionalData)
 	out, err = c.remoteGCM.Open(out[:0], nonce, out, additionalData)
 	if err != nil {
 		return nil, fmt.Errorf("decryptPacket: %v", err)
