@@ -56,14 +56,14 @@ func generateKeypair(c namedCurve) (*namedCurveKeypair, error) {
 			return nil, err
 		}
 
-		return &namedCurveKeypair{namedCurveP256, elliptic.Marshal(elliptic.P384(), x, y), privateKey}, nil
+		return &namedCurveKeypair{namedCurveP384, elliptic.Marshal(elliptic.P384(), x, y), privateKey}, nil
 	case namedCurveP521:
 		privateKey, x, y, err := elliptic.GenerateKey(elliptic.P521(), rand.Reader)
 		if err != nil {
 			return nil, err
 		}
 
-		return &namedCurveKeypair{namedCurveP256, elliptic.Marshal(elliptic.P521(), x, y), privateKey}, nil
+		return &namedCurveKeypair{namedCurveP521, elliptic.Marshal(elliptic.P521(), x, y), privateKey}, nil
 	}
 	return nil, errInvalidNamedCurve
 }
