@@ -23,9 +23,9 @@ const (
 )
 
 var namedCurves = map[namedCurve]bool{
-	namedCurveX25519: true,
-	namedCurveP256:   true,
-	namedCurveP384:   true,
+	//namedCurveX25519: true,
+	namedCurveP256: true,
+	//namedCurveP384:   true,
 }
 
 func generateKeypair(c namedCurve) (*namedCurveKeypair, error) {
