@@ -17,7 +17,7 @@ import (
 const (
 	initialTickerInterval = time.Second
 	cookieLength          = 20
-	defaultNamedCurve     = namedCurveX25519
+	defaultNamedCurve     = namedCurveP384
 	inboundBufferSize     = 8192
 )
 
