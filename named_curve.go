@@ -18,12 +18,14 @@ type namedCurveKeypair struct {
 
 const (
 	namedCurveP256   namedCurve = 0x0017
+	namedCurveP384   namedCurve = 0x0018
 	namedCurveX25519 namedCurve = 0x001d
 )
 
 var namedCurves = map[namedCurve]bool{
 	namedCurveX25519: true,
 	namedCurveP256:   true,
+	namedCurveP384:   true,
 }
 
 func generateKeypair(c namedCurve) (*namedCurveKeypair, error) {
@@ -46,6 +48,13 @@ func generateKeypair(c namedCurve) (*namedCurveKeypair, error) {
 		}
 
 		return &namedCurveKeypair{namedCurveP256, elliptic.Marshal(elliptic.P256(), x, y), privateKey}, nil
+	case namedCurveP384:
+		privateKey, x, y, err := elliptic.GenerateKey(elliptic.P384(), rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+
+		return &namedCurveKeypair{namedCurveP384, elliptic.Marshal(elliptic.P384(), x, y), privateKey}, nil
 	}
 	return nil, errInvalidNamedCurve
 }

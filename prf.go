@@ -86,6 +86,18 @@ func prfPreMasterSecret(publicKey, privateKey []byte, curve namedCurve) ([]byte,
 		resultBytes := result.Bytes()
 		copy(preMasterSecret[len(preMasterSecret)-len(resultBytes):], resultBytes)
 		return preMasterSecret, nil
+	case namedCurveP384:
+		x, y := elliptic.Unmarshal(elliptic.P384(), publicKey)
+		if x == nil || y == nil {
+			return nil, errInvalidNamedCurve
+		}
+
+		curve := elliptic.P384()
+		result, _ := curve.ScalarMult(x, y, privateKey)
+		preMasterSecret := make([]byte, (curve.Params().BitSize+7)>>3)
+		resultBytes := result.Bytes()
+		copy(preMasterSecret[len(preMasterSecret)-len(resultBytes):], resultBytes)
+		return preMasterSecret, nil
 	}
 
 	return nil, errInvalidNamedCurve
