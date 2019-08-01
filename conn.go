@@ -444,6 +444,8 @@ func (c *Conn) notify(level alertLevel, desc alertDescription) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	c.log.Tracef("<- Notify Alert Level: %v Desc: %v", level, desc)
+
 	c.internalSend(&recordLayer{
 		recordLayerHeader: recordLayerHeader{
 			epoch:           c.getLocalEpoch(),
