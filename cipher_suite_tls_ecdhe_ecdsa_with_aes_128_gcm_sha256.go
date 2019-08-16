@@ -7,7 +7,8 @@ import (
 )
 
 type cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256 struct {
-	gcm *cryptoGCM
+	gcm         *cryptoGCM
+	initialized bool
 }
 
 func (c cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) certificateType() clientCertificateType {
@@ -30,6 +31,10 @@ func (c cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) isPSK() bool {
 	return false
 }
 
+func (c cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) isInitialized() bool {
+	return c.initialized
+}
+
 func (c *cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) init(masterSecret, clientRandom, serverRandom []byte, isClient bool) error {
 	const (
 		prfMacLen = 0
@@ -46,6 +51,10 @@ func (c *cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) init(masterSecret, clientR
 		c.gcm, err = newCryptoGCM(keys.clientWriteKey, keys.clientWriteIV, keys.serverWriteKey, keys.serverWriteIV)
 	} else {
 		c.gcm, err = newCryptoGCM(keys.serverWriteKey, keys.serverWriteIV, keys.clientWriteKey, keys.clientWriteIV)
+	}
+
+	if err == nil {
+		c.initialized = true
 	}
 
 	return err

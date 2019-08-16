@@ -7,7 +7,8 @@ import (
 )
 
 type cipherSuiteTLSEcdheEcdsaWithAes256CbcSha struct {
-	cbc *cryptoCBC
+	cbc         *cryptoCBC
+	initialized bool
 }
 
 func (c cipherSuiteTLSEcdheEcdsaWithAes256CbcSha) certificateType() clientCertificateType {
@@ -28,6 +29,10 @@ func (c cipherSuiteTLSEcdheEcdsaWithAes256CbcSha) hashFunc() func() hash.Hash {
 
 func (c cipherSuiteTLSEcdheEcdsaWithAes256CbcSha) isPSK() bool {
 	return false
+}
+
+func (c cipherSuiteTLSEcdheEcdsaWithAes256CbcSha) isInitialized() bool {
+	return c.initialized
 }
 
 func (c *cipherSuiteTLSEcdheEcdsaWithAes256CbcSha) init(masterSecret, clientRandom, serverRandom []byte, isClient bool) error {
@@ -52,6 +57,10 @@ func (c *cipherSuiteTLSEcdheEcdsaWithAes256CbcSha) init(masterSecret, clientRand
 			keys.serverWriteKey, keys.serverWriteIV, keys.serverMACKey,
 			keys.clientWriteKey, keys.clientWriteIV, keys.clientMACKey,
 		)
+	}
+
+	if err == nil {
+		c.initialized = true
 	}
 
 	return err
