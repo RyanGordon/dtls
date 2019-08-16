@@ -530,6 +530,139 @@ func TestClientCertificate(t *testing.T) {
 	}
 }
 
+func TestExtendedMasterSecret(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		clientCfg         *Config
+		serverCfg         *Config
+		expectedClientErr error
+		expectedServerErr error
+	}{
+		"Request_Request_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: RequestExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: RequestExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+		"Request_Require_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: RequestExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: RequireExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+		"Request_Disable_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: RequestExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: DisableExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+		"Require_Request_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: RequireExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: RequestExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+		"Require_Require_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: RequireExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: RequireExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+		"Require_Disable_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: RequireExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: DisableExtendedMasterSecret,
+			},
+			expectedClientErr: fmt.Errorf("Client required Extended Master Secret extension, but server does not support it"),
+			expectedServerErr: io.EOF,
+		},
+		"Disable_Request_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: DisableExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: RequestExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+		"Disable_Require_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: DisableExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: RequireExtendedMasterSecret,
+			},
+			expectedClientErr: io.EOF,
+			expectedServerErr: fmt.Errorf("Server requires the Extended Master Secret extension, but the client does not support it"),
+		},
+		"Disable_Disable_ExtendedMasterSecret": {
+			clientCfg: &Config{
+				ExtendedMasterSecret: DisableExtendedMasterSecret,
+			},
+			serverCfg: &Config{
+				ExtendedMasterSecret: DisableExtendedMasterSecret,
+			},
+			expectedClientErr: nil,
+			expectedServerErr: nil,
+		},
+	}
+	for name, tt := range tests {
+		tt := tt
+		t.Run(name, func(t *testing.T) {
+			ca, cb := net.Pipe()
+			type result struct {
+				c   *Conn
+				err error
+			}
+			c := make(chan result)
+
+			go func() {
+				client, err := testClient(ca, tt.clientCfg, true)
+				c <- result{client, err}
+			}()
+
+			_, err := testServer(cb, tt.serverCfg, true)
+			res := <-c
+
+			if tt.expectedClientErr != nil {
+				if res.err.Error() != tt.expectedClientErr.Error() {
+					t.Errorf("Client error expected: \"%v\" but got \"%v\"", tt.expectedClientErr, res.err)
+				}
+			}
+
+			if tt.expectedServerErr != nil {
+				if err.Error() != tt.expectedServerErr.Error() {
+					t.Errorf("Server error expected: \"%v\" but got \"%v\"", tt.expectedServerErr, err)
+				}
+			}
+
+		})
+	}
+}
+
 func TestServerCertificate(t *testing.T) {
 	t.Parallel()
 
