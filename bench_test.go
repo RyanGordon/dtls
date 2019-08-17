@@ -15,16 +15,16 @@ func TestSimpleReadWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := &Config{
-		Certificate:        certificate,
-		PrivateKey:         privateKey,
-		LoggerFactory:      logging.NewDefaultLoggerFactory(),
-		InsecureSkipVerify: true,
-	}
 	gotHello := make(chan struct{})
 
 	go func() {
-		server, sErr := testServer(cb, config, false)
+		serverConfig := &Config{
+			Certificate:        certificate,
+			PrivateKey:         privateKey,
+			LoggerFactory:      logging.NewDefaultLoggerFactory(),
+			InsecureSkipVerify: true,
+		}
+		server, sErr := testServer(cb, serverConfig, false)
 		if sErr != nil {
 			t.Error(err)
 			return
@@ -36,7 +36,14 @@ func TestSimpleReadWrite(t *testing.T) {
 		gotHello <- struct{}{}
 	}()
 
-	client, err := testClient(ca, config, false)
+	clientConfig := &Config{
+		Certificate:        certificate,
+		PrivateKey:         privateKey,
+		LoggerFactory:      logging.NewDefaultLoggerFactory(),
+		InsecureSkipVerify: true,
+	}
+
+	client, err := testClient(ca, clientConfig, false)
 	if err != nil {
 		t.Fatal(err)
 	}
