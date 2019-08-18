@@ -70,7 +70,7 @@ func (c *cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) encrypt(pkt *recordLayer, 
 
 func (c *cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256) decrypt(raw []byte) ([]byte, error) {
 	if c.gcm == nil {
-		return nil, errors.New("CipherSuite has not been initalized, unable to decrypt ")
+		return nil, errors.New("gcm CipherSuite has not been initalized, unable to decrypt ")
 	}
 
 	return c.gcm.decrypt(raw)

@@ -1,6 +1,8 @@
 package dtls
 
-import "sync"
+import (
+	"sync"
+)
 
 type handshakeCacheItem struct {
 	typ             handshakeType

@@ -18,11 +18,13 @@ type State struct {
 	srtpProtectionProfile SRTPProtectionProfile // Negotiated SRTPProtectionProfile
 	remoteCertificate     *x509.Certificate
 
-	isClient bool
+	isClient             bool
 
 	serverKeyExchange    *handshakeMessageServerKeyExchange
 	preMasterSecret      []byte
-	extendedMasterSecret bool
+    extendedMasterSecret bool
+
+	handshakeCompleted bool
 }
 
 type serializedState struct {
@@ -37,6 +39,7 @@ type serializedState struct {
 	RemoteCertificate     []byte
 	IsClient              bool
 	ExtendedMasterSecret  bool
+	HandshakeCompleted    bool
 }
 
 func (s *State) clone() (*State, error) {
@@ -84,6 +87,7 @@ func (s *State) serialize() (*serializedState, error) {
 		RemoteCertificate:     cert,
 		IsClient:              s.isClient,
 		ExtendedMasterSecret:  s.extendedMasterSecret,
+		HandshakeCompleted:    s.handshakeCompleted,
 	}
 
 	return &serialized, nil
@@ -133,6 +137,8 @@ func (s *State) deserialize(serialized serializedState) error {
 		}
 		s.remoteCertificate = h.certificate
 	}
+
+	s.handshakeCompleted = serialized.HandshakeCompleted
 
 	return nil
 }

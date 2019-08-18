@@ -70,7 +70,7 @@ func (c *cipherSuiteTLSPskWithAes128Ccm8) encrypt(pkt *recordLayer, raw []byte) 
 
 func (c *cipherSuiteTLSPskWithAes128Ccm8) decrypt(raw []byte) ([]byte, error) {
 	if c.ccm == nil {
-		return nil, errors.New("CipherSuite has not been initalized, unable to decrypt ")
+		return nil, errors.New("ccm CipherSuite has not been initalized, unable to decrypt ")
 	}
 
 	return c.ccm.decrypt(raw)

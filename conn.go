@@ -60,6 +60,8 @@ type Conn struct {
 	localPSKCallback     PSKCallback
 	localPSKIdentityHint []byte
 
+	connectTimeout time.Duration // Connection Timeout
+
 	localCertificateVerify    []byte // cache CertificateVerify
 	localVerifyData           []byte // cached VerifyData
 	localKeySignature         []byte // cached keySignature
@@ -70,9 +72,10 @@ type Conn struct {
 	rootCAs               *x509.CertPool
 	serverName            string
 
-	handshakeMessageHandler handshakeMessageHandler
-	flightHandler           flightHandler
-	handshakeCompleted      chan bool
+	handshakeMessageHandler  handshakeMessageHandler
+	flightHandler            flightHandler
+	handshakeCompletedSignal chan bool
+	handshakeCompletedMutex  sync.RWMutex
 
 	connErr atomic.Value
 	log     logging.LeveledLogger
@@ -135,10 +138,12 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 		localPSKCallback:     config.PSK,
 		localPSKIdentityHint: config.PSKIdentityHint,
 
-		decrypted:          make(chan []byte),
-		workerTicker:       time.NewTicker(workerInterval),
-		handshakeCompleted: make(chan bool),
-		log:                logger,
+		connectTimeout: config.ConnectTimeout,
+
+		decrypted:                make(chan []byte),
+		workerTicker:             time.NewTicker(workerInterval),
+		handshakeCompletedSignal: make(chan bool),
+		log:                      logger,
 	}
 
 	// Use host from conn address when serverName is not provided
@@ -173,8 +178,20 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 	// Handle inbound
 	go c.inboundLoop()
 
-	<-c.handshakeCompleted
+	if c.connectTimeout.Seconds() > 0.0 {
+		select {
+		case <-c.handshakeCompletedSignal:
+		case <-time.After(c.connectTimeout):
+			c.log.Errorf("%s", errHandshakeTimeout)
+			return nil, errHandshakeTimeout
+		}
+	} else {
+		<-c.handshakeCompletedSignal
+	}
+
+	c.setHandshakeCompleted()
 	c.log.Trace("Handshake Completed")
+
 	return c, c.getConnErr()
 }
 
@@ -253,7 +270,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 
 // Close closes the connection.
 func (c *Conn) Close() error {
-	c.notify(alertLevelFatal, alertCloseNotify)
+	c.fatalNotify(alertCloseNotify)
 	c.stopWithError(ErrConnClosed)
 	if err := c.getConnErr(); err != ErrConnClosed {
 		return err
@@ -266,6 +283,18 @@ func (c *Conn) RemoteCertificate() *x509.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.state.remoteCertificate
+}
+
+func (c *Conn) isHandshakeCompleted() bool {
+	c.handshakeCompletedMutex.RLock()
+	defer c.handshakeCompletedMutex.RUnlock()
+	return c.state.handshakeCompleted
+}
+
+func (c *Conn) setHandshakeCompleted() {
+	c.handshakeCompletedMutex.Lock()
+	defer c.handshakeCompletedMutex.Unlock()
+	c.state.handshakeCompleted = true
 }
 
 // SelectedSRTPProtectionProfile returns the selected SRTPProtectionProfile
@@ -314,7 +343,6 @@ func (c *Conn) ExportKeyingMaterial(label string, context []byte, length int) ([
 }
 
 func (c *Conn) internalSend(pkt *recordLayer, shouldEncrypt bool) {
-
 	raw, err := pkt.Marshal()
 	if err != nil {
 		c.stopWithError(err)
@@ -348,6 +376,7 @@ func (c *Conn) inboundLoop() {
 	for {
 		i, err := c.nextConn.Read(b)
 		if err != nil {
+			c.fatalNotify(alertInternalError)
 			c.stopWithError(err)
 			return
 		} else if c.getConnErr() != nil {
@@ -356,6 +385,7 @@ func (c *Conn) inboundLoop() {
 
 		pkts, err := unpackDatagram(b[:i])
 		if err != nil {
+			c.fatalNotify(alertDecodeError)
 			c.stopWithError(err)
 			return
 		}
@@ -363,6 +393,10 @@ func (c *Conn) inboundLoop() {
 		for _, p := range pkts {
 			err := c.handleIncomingPacket(p)
 			if err != nil {
+				if err != ErrConnClosed {
+					c.fatalNotify(alertCloseNotify)
+				}
+
 				c.stopWithError(err)
 				return
 			}
@@ -393,7 +427,7 @@ func (c *Conn) handleIncomingPacket(buf []byte) error {
 		buf, err = c.state.cipherSuite.decrypt(buf)
 		if err != nil {
 			c.log.Debugf("decrypt failed: %s", err)
-			return nil
+			return err
 		}
 	}
 
@@ -430,7 +464,7 @@ func (c *Conn) handleIncomingPacket(buf []byte) error {
 	case *alert:
 		c.log.Tracef("<- %s", content.String())
 		if content.alertDescription == alertCloseNotify {
-			return c.Close()
+			return ErrConnClosed
 		}
 		return fmt.Errorf("alert: %v", content)
 	case *changeCipherSpec:
@@ -442,6 +476,10 @@ func (c *Conn) handleIncomingPacket(buf []byte) error {
 		return fmt.Errorf("unhandled contentType %d", content.contentType())
 	}
 	return nil
+}
+
+func (c *Conn) fatalNotify(desc alertDescription) {
+	c.notify(alertLevelFatal, desc)
 }
 
 func (c *Conn) notify(level alertLevel, desc alertDescription) {
@@ -458,16 +496,16 @@ func (c *Conn) notify(level alertLevel, desc alertDescription) {
 			alertLevel:       level,
 			alertDescription: desc,
 		},
-	}, true)
+	}, c.isHandshakeCompleted())
 
 	c.state.localSequenceNumber++
 }
 
 func (c *Conn) signalHandshakeComplete() {
 	select {
-	case <-c.handshakeCompleted:
+	case <-c.handshakeCompletedSignal:
 	default:
-		close(c.handshakeCompleted)
+		close(c.handshakeCompletedSignal)
 	}
 }
 
@@ -479,7 +517,7 @@ func (c *Conn) startHandshakeOutbound() {
 				err        error
 			)
 			select {
-			case <-c.handshakeCompleted:
+			case <-c.handshakeCompletedSignal:
 				return
 			case <-c.workerTicker.C:
 				isFinished, err = c.flightHandler(c)
@@ -489,6 +527,7 @@ func (c *Conn) startHandshakeOutbound() {
 
 			switch {
 			case err != nil:
+				c.fatalNotify(alertHandshakeFailure)
 				c.stopWithError(err)
 				return
 			case c.getConnErr() != nil:
@@ -502,6 +541,10 @@ func (c *Conn) startHandshakeOutbound() {
 }
 
 func (c *Conn) stopWithError(err error) {
+	if err != ErrConnClosed {
+		c.log.Errorf("%s", err)
+	}
+
 	if connErr := c.nextConn.Close(); connErr != nil {
 		if err != ErrConnClosed {
 			connErr = fmt.Errorf("%v\n%v", err, connErr)

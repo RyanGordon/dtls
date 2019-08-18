@@ -77,6 +77,10 @@ type Config struct {
 	ServerName string
 
 	LoggerFactory logging.LoggerFactory
+
+	// ConnectTimeoutMs is the timeout threshold for new connection handshakes
+	// to complete (default is no timeout)
+	ConnectTimeout time.Duration
 }
 
 // PSKCallback is called once we have the remote's PSKIdentityHint.
