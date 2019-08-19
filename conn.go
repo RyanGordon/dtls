@@ -42,6 +42,8 @@ type Conn struct {
 
 	state State // Internal state
 
+	connectTimeout time.Duration
+
 	remoteRequestedCertificate bool // Did we get a CertificateRequest
 
 	localSRTPProtectionProfiles []SRTPProtectionProfile // Available SRTPProtectionProfiles, if empty no SRTP support
@@ -110,6 +112,11 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 		loggerFactory = logging.NewDefaultLoggerFactory()
 	}
 
+	connectTimeout := defaultConnectTimeout
+	if config.ConnectTimeout != nil {
+		connectTimeout = *config.ConnectTimeout
+	}
+
 	c := &Conn{
 		nextConn:                    nextConn,
 		currFlight:                  newFlight(isClient),
@@ -117,6 +124,7 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 		handshakeCache:              newHandshakeCache(),
 		handshakeMessageHandler:     handshakeMessageHandler,
 		flightHandler:               flightHandler,
+		connectTimeout:              connectTimeout,
 		localCertificate:            config.Certificate,
 		localPrivateKey:             config.PrivateKey,
 		clientAuth:                  config.ClientAuth,
@@ -169,7 +177,16 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 	// Handle inbound
 	go c.inboundLoop()
 
-	<-c.handshakeCompleted
+	if c.connectTimeout.Seconds() > 0.0 {
+		select {
+		case <-c.handshakeCompleted:
+		case <-time.After(c.connectTimeout):
+			c.log.Errorf("%s", errConnectTimeout)
+			return nil, errConnectTimeout
+		}
+	} else {
+		<-c.handshakeCompleted
+	}
 	c.log.Trace("Handshake Completed")
 	return c, c.getConnErr()
 }
