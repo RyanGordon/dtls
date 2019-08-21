@@ -99,7 +99,7 @@ func (f *flight) get() flightVal {
 	return f.val
 }
 
-func (f *flight) set(val flightVal) error {
+func (f *flight) set(val flightVal) {
 	f.Lock()
 	f.log.Tracef("[handshake] Moving from %s to %s", f.val.String(), val.String())
 	f.val = val // TODO ensure no invalid transitions
@@ -109,6 +109,4 @@ func (f *flight) set(val flightVal) error {
 	case f.workerTrigger <- struct{}{}:
 	default:
 	}
-
-	return nil
 }
