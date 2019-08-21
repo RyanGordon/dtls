@@ -650,7 +650,7 @@ func TestExtendedMasterSecret(t *testing.T) {
 				ExtendedMasterSecret: DisableExtendedMasterSecret,
 			},
 			expectedClientErr: fmt.Errorf("Client required Extended Master Secret extension, but server does not support it"),
-			expectedServerErr: io.EOF,
+			expectedServerErr: fmt.Errorf("alert: Alert LevelFatal: UnsupportedExtension"),
 		},
 		"Disable_Request_ExtendedMasterSecret": {
 			clientCfg: &Config{
@@ -669,7 +669,7 @@ func TestExtendedMasterSecret(t *testing.T) {
 			serverCfg: &Config{
 				ExtendedMasterSecret: RequireExtendedMasterSecret,
 			},
-			expectedClientErr: io.EOF,
+			expectedClientErr: fmt.Errorf("alert: Alert LevelFatal: UnsupportedExtension"),
 			expectedServerErr: fmt.Errorf("Server requires the Extended Master Secret extension, but the client does not support it"),
 		},
 		"Disable_Disable_ExtendedMasterSecret": {

@@ -185,22 +185,22 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 
 	if c.connectTimeout.Seconds() > 0.0 {
 		select {
-		case <-c.handshakeCompleted:
+		case <-c.handshakeCompletedSignal:
 		case <-time.After(c.connectTimeout):
 			c.log.Errorf("%s", errConnectTimeout)
 			return nil, errConnectTimeout
 		}
 	} else {
-		<-c.handshakeCompleted
+		<-c.handshakeCompletedSignal
 	}
 
-    err = c.getConnErr()
-    if err == nil {
-        c.log.Trace("Handshake completed successfully")
-        c.setHandshakeCompletedSuccessfully()
-    } else {
-        c.log.Trace("Handshake failed to complete successfully")
-    }
+	err = c.getConnErr()
+	if err == nil {
+		c.log.Trace("Handshake completed successfully")
+		c.setHandshakeCompletedSuccessfully()
+	} else {
+		c.log.Trace("Handshake failed to complete successfully")
+	}
 
 	return c, err
 }

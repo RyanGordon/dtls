@@ -51,7 +51,7 @@ func serverHandshakeHandler(c *Conn) (*alert, error) {
 			}
 
 			if c.extendedMasterSecret == RequireExtendedMasterSecret && !c.state.extendedMasterSecret {
-				return fmt.Errorf("Server requires the Extended Master Secret extension, but the client does not support it")
+				return &alert{alertLevelFatal, alertUnsupportedExtension}, fmt.Errorf("Server requires the Extended Master Secret extension, but the client does not support it")
 			}
 
 			if c.localKeypair == nil {

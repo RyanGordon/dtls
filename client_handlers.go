@@ -125,7 +125,8 @@ func clientHandshakeHandler(c *Conn) (*alert, error) {
 			c.state.remoteCertificate = h.certificate
 
 		case *handshakeMessageServerKeyExchange:
-			if alertPtr, err := initalizeCipherSuite(h); err != nil {
+			alertPtr, err := handleServerKeyExchange(c, h)
+			if err != nil {
 				return alertPtr, err
 			}
 		case *handshakeMessageCertificateRequest:
@@ -221,15 +222,7 @@ func clientHandshakeHandler(c *Conn) (*alert, error) {
 			}
 		}
 
-		// handshakeMessageServerKeyExchange is optional for PSK
-		if c.state.masterSecret == nil {
-			if alertPtr, err := initalizeCipherSuite(&handshakeMessageServerKeyExchange{}); err != nil {
-				return alertPtr, err
-			}
-		}
-
 		c.state.localSequenceNumber++
-		c.log.Tracef("[handshake] Flight 3 changed to %s", flight5.String())
 		c.currFlight.set(flight5)
 	case flight5:
 		expectedMessages := c.handshakeCache.pull(
@@ -366,14 +359,14 @@ func clientFlightHandler(c *Conn) (bool, *alert, error) {
 
 		// handshakeMessageServerKeyExchange is optional for PSK
 		if c.state.serverKeyExchange == nil {
-			err := handleServerKeyExchange(c, &handshakeMessageServerKeyExchange{})
+			alertPtr, err := handleServerKeyExchange(c, &handshakeMessageServerKeyExchange{})
 			if err != nil {
-				return false, &alert{alertLevelFatal, alertInternalError}, err
+				return false, alertPtr, err
 			}
 		}
 
-		if err := initalizeCipherSuite(c, c.state.serverKeyExchange); err != nil {
-			return false, &alert{alertLevelFatal, alertInternalError}, err
+		if alertPtr, err := initalizeCipherSuite(c, c.state.serverKeyExchange); err != nil {
+			return false, alertPtr, err
 		}
 
 		// If the client has sent a certificate with signing ability, a digitally-signed
