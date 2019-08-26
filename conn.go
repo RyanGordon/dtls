@@ -460,6 +460,12 @@ func (c *Conn) handleIncomingPacket(buf []byte) (*alert, error) {
 		if content.alertDescription == alertCloseNotify {
 			return nil, c.Close()
 		}
+
+		err := c.Close()
+		if err != nil {
+			return nil, err
+		}
+
 		return nil, fmt.Errorf("alert: %v", content)
 	case *changeCipherSpec:
 		c.log.Trace("<- ChangeCipherSpec")
