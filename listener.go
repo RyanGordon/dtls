@@ -12,6 +12,7 @@ func Listen(network string, laddr *net.UDPAddr, config *Config) (*Listener, erro
 	if config == nil {
 		return nil, errors.New("no config provided")
 	}
+
 	parent, err := udp.Listen(network, laddr)
 	if err != nil {
 		return nil, err
@@ -42,7 +43,12 @@ func (l *Listener) Accept() (net.Conn, error) {
 // Any blocked Accept operations will be unblocked and return errors.
 // Already Accepted connections are not closed.
 func (l *Listener) Close() error {
-	return l.parent.Close()
+	closeTimeout := defaultListenerCloseTimeout
+	if l.config.ListenerCloseTimeout != nil {
+		closeTimeout = *l.config.ListenerCloseTimeout
+	}
+
+	return l.parent.Close(closeTimeout)
 }
 
 // Addr returns the listener's network address.

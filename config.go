@@ -81,12 +81,23 @@ type Config struct {
 	// ConnectTimeout is the timeout threshold for new connection handshakes
 	// to complete (default is 30 seconds)
 	ConnectTimeout *time.Duration
+
+	// ListenerCloseTimeout is the timeout threshold for closing the listener
+	// gracefully (default is 10 seconds)
+	ListenerCloseTimeout *time.Duration
 }
 
 const defaultConnectTimeout = 30 * time.Second
 
 // ConnectTimeoutOption simply provides a wrapper for creating a *time.Duration
 func ConnectTimeoutOption(timeout time.Duration) *time.Duration {
+	return &timeout
+}
+
+const defaultListenerCloseTimeout = 10 * time.Second
+
+// ListenerCloseTimeoutOption simply provides a wrapper for creating a *time.Duration
+func ListenerCloseTimeoutOption(timeout time.Duration) *time.Duration {
 	return &timeout
 }
 

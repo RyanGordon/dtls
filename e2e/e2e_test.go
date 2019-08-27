@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync/atomic"
@@ -16,11 +17,12 @@ const testMessage = "Hello World"
 const testTimeLimit = 5 * time.Second
 const messageRetry = 200 * time.Millisecond
 
-func randomPort(t testing.TB) int {
-	t.Helper()
+var serverPort int
+
+func randomPort() int {
 	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to pickPort: %v", err)
+		panic(fmt.Sprintf("failed to pickPort: %v", err))
 	}
 	defer func() {
 		_ = conn.Close()
@@ -29,8 +31,7 @@ func randomPort(t testing.TB) int {
 	case *net.UDPAddr:
 		return addr.Port
 	default:
-		t.Fatalf("unknown addr type %T", addr)
-		return 0
+		panic(fmt.Sprintf("unknown addr type %T", addr))
 	}
 }
 
@@ -65,10 +66,11 @@ func simpleReadWrite(errChan chan error, outChan chan string, conn io.ReadWriteC
 		}
 	}
 
+	maybePushError(conn.Close())
+
 	if listener != nil {
 		maybePushError(listener.Close())
 	}
-	maybePushError(conn.Close())
 }
 
 func assertE2ECommunication(clientConfig, serverConfig *dtls.Config, t *testing.T) {
@@ -76,19 +78,25 @@ func assertE2ECommunication(clientConfig, serverConfig *dtls.Config, t *testing.
 	clientChan := make(chan string)
 	serverChan := make(chan string)
 	var messageRecvCount uint64 // Counter to make sure both sides got a message
+	var serverListener *dtls.Listener
+	var clientConn net.Conn
 
-	serverPort := randomPort(t)
+	// Initialize a constant port for the server
+	if serverPort == 0 {
+		serverPort = randomPort()
+	}
 	serverReady := make(chan struct{})
 
 	// DTLS Client
 	go func() {
+		var err error
 		select {
 		case <-serverReady:
 			// OK
 		case <-time.After(time.Second):
 			errChan <- errors.New("waiting on serverReady err: timeout")
 		}
-		conn, err := dtls.Dial("udp",
+		clientConn, err = dtls.Dial("udp",
 			&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: serverPort},
 			clientConfig,
 		)
@@ -96,12 +104,13 @@ func assertE2ECommunication(clientConfig, serverConfig *dtls.Config, t *testing.
 			errChan <- err
 			return
 		}
-		simpleReadWrite(errChan, clientChan, conn, nil, &messageRecvCount)
+		simpleReadWrite(errChan, clientChan, clientConn, nil, &messageRecvCount)
 	}()
 
 	// DTLS Server
 	go func() {
-		listener, err := dtls.Listen("udp",
+		var err error
+		serverListener, err = dtls.Listen("udp",
 			&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: serverPort},
 			serverConfig,
 		)
@@ -110,13 +119,13 @@ func assertE2ECommunication(clientConfig, serverConfig *dtls.Config, t *testing.
 			return
 		}
 		serverReady <- struct{}{}
-		conn, err := listener.Accept()
+		conn, err := serverListener.Accept()
 		if err != nil {
 			errChan <- err
 			return
 		}
 
-		simpleReadWrite(errChan, serverChan, conn, listener, &messageRecvCount)
+		simpleReadWrite(errChan, serverChan, conn, serverListener, &messageRecvCount)
 	}()
 
 	func() {

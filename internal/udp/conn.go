@@ -9,6 +9,7 @@ import (
 )
 
 const receiveMTU = 8192
+const closeRecheckDuration = 100 * time.Millisecond
 
 var errClosedListener = errors.New("udp: listener closed")
 
@@ -39,27 +40,39 @@ func (l *Listener) Accept() (*Conn, error) {
 
 // Close closes the listener.
 // Any blocked Accept operations will be unblocked and return errors.
-func (l *Listener) Close() error {
+func (l *Listener) Close(timeout time.Duration) error {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 
 	var err error
 	l.doneOnce.Do(func() {
-		l.accepting = false
 		close(l.doneCh)
-		err = l.cleanup()
+		err = l.closeConn(timeout)
 	})
 
 	return err
 }
 
-// cleanup closes the packet conn if it is no longer used
+// closeConn gracefully waits for clients to close, up to the given
+// timeout.
 // The caller should hold the read lock.
-func (l *Listener) cleanup() error {
-	if !l.accepting && len(l.conns) == 0 {
+func (l *Listener) closeConn(timeout time.Duration) error {
+	if len(l.conns) == 0 {
 		return l.pConn.Close()
 	}
-	return nil
+
+	timeoutTimer := time.NewTimer(timeout)
+
+	for {
+		select {
+		case <-timeoutTimer.C:
+			return l.pConn.Close()
+		case <-time.After(closeRecheckDuration):
+			if len(l.conns) == 0 {
+				return l.pConn.Close()
+			}
+		}
+	}
 }
 
 // Addr returns the listener's network address.
@@ -75,11 +88,10 @@ func Listen(network string, laddr *net.UDPAddr) (*Listener, error) {
 	}
 
 	l := &Listener{
-		pConn:     conn,
-		acceptCh:  make(chan *Conn),
-		conns:     make(map[string]*Conn),
-		accepting: true,
-		doneCh:    make(chan struct{}),
+		pConn:    conn,
+		acceptCh: make(chan *Conn),
+		conns:    make(map[string]*Conn),
+		doneCh:   make(chan struct{}),
 	}
 
 	go l.readLoop()
@@ -188,7 +200,6 @@ func (c *Conn) Close() error {
 		close(c.doneCh)
 		c.listener.lock.Lock()
 		delete(c.listener.conns, c.rAddr.String())
-		err = c.listener.cleanup()
 		c.listener.lock.Unlock()
 		c.listener = nil
 	})
