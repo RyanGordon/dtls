@@ -200,6 +200,7 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 		err = c.getConnErr()
 	case <-time.After(c.connectTimeout):
 		err = errConnectTimeout
+		c.signalHandshakeComplete()
 	}
 
 	if err == nil {
