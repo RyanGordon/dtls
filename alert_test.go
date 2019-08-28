@@ -38,10 +38,10 @@ func TestAlert(t *testing.T) {
 			return
 		}
 
-		data, marshalErr := a.Marshal()
+		data, marshalErr := a.Marshal(0)
 		if marshalErr != nil {
 			t.Errorf("Unexpected Error %v: got: %v", test.Name, marshalErr)
-		} else if !reflect.DeepEqual(test.Data, data) {
+		} else if !reflect.DeepEqual(test.Data, data[0]) {
 			t.Errorf("%q alert.marshal: got % 02x, want % 02x", test.Name, data, test.Data)
 		}
 	}

@@ -39,10 +39,10 @@ func TestHandshakeMessage(t *testing.T) {
 		t.Errorf("handshakeMessageClientHello unmarshal: got %#v, want %#v", h, parsedHandshake)
 	}
 
-	raw, err := h.Marshal()
+	raw, err := h.Marshal(1200)
 	if err != nil {
 		t.Error(err)
-	} else if !reflect.DeepEqual(raw, rawHandshakeMessage) {
+	} else if !reflect.DeepEqual(raw[0], rawHandshakeMessage) {
 		t.Errorf("handshakeMessageClientHello marshal: got %#v, want %#v", raw, rawHandshakeMessage)
 	}
 }

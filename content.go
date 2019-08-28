@@ -12,6 +12,6 @@ const (
 
 type content interface {
 	contentType() contentType
-	Marshal() ([]byte, error)
+	Marshal(fragmentLen int) ([][]byte, error)
 	Unmarshal(data []byte) error
 }

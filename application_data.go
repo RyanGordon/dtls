@@ -13,8 +13,9 @@ func (a applicationData) contentType() contentType {
 	return contentTypeApplicationData
 }
 
-func (a *applicationData) Marshal() ([]byte, error) {
-	return append([]byte{}, a.data...), nil
+func (a *applicationData) Marshal(fragmentLen int) ([][]byte, error) {
+	raw := append([]byte{}, a.data...)
+	return [][]byte{raw}, nil
 }
 
 func (a *applicationData) Unmarshal(data []byte) error {

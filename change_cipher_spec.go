@@ -12,8 +12,10 @@ func (c changeCipherSpec) contentType() contentType {
 	return contentTypeChangeCipherSpec
 }
 
-func (c *changeCipherSpec) Marshal() ([]byte, error) {
-	return []byte{0x01}, nil
+func (c *changeCipherSpec) Marshal(fragmentLen int) ([][]byte, error) {
+	return [][]byte{
+		{0x01},
+	}, nil
 }
 
 func (c *changeCipherSpec) Unmarshal(data []byte) error {

@@ -7,13 +7,13 @@ import (
 
 func TestChangeCipherSpecRoundTrip(t *testing.T) {
 	c := changeCipherSpec{}
-	raw, err := c.Marshal()
+	raw, err := c.Marshal(0)
 	if err != nil {
 		t.Error(err)
 	}
 
 	var cNew changeCipherSpec
-	if err := cNew.Unmarshal(raw); err != nil {
+	if err := cNew.Unmarshal(raw[0]); err != nil {
 		t.Error(err)
 	}
 

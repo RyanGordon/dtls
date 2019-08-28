@@ -45,6 +45,8 @@ type Conn struct {
 
 	connectTimeout time.Duration
 
+	maximumTransmissionUnit int
+
 	remoteRequestedCertificate bool // Did we get a CertificateRequest
 
 	localSRTPProtectionProfiles []SRTPProtectionProfile // Available SRTPProtectionProfiles, if empty no SRTP support
@@ -126,6 +128,11 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 		connectTimeout = math.MaxInt64 * time.Nanosecond
 	}
 
+	mtu := config.MTU
+	if mtu <= 0 {
+		mtu = defaultMTU
+	}
+
 	c := &Conn{
 		nextConn:                    nextConn,
 		currFlight:                  newFlight(isClient, logger),
@@ -134,6 +141,7 @@ func createConn(nextConn net.Conn, flightHandler flightHandler, handshakeMessage
 		handshakeMessageHandler:     handshakeMessageHandler,
 		flightHandler:               flightHandler,
 		connectTimeout:              connectTimeout,
+		maximumTransmissionUnit:     mtu,
 		localCertificate:            config.Certificate,
 		localPrivateKey:             config.PrivateKey,
 		clientAuth:                  config.ClientAuth,
@@ -339,28 +347,40 @@ func (c *Conn) ExportKeyingMaterial(label string, context []byte, length int) ([
 }
 
 func (c *Conn) internalSend(pkt *recordLayer, shouldEncrypt bool) {
+	fragmentLength := 0 // only fragment handshakes
 
-	raw, err := pkt.Marshal()
+	if h, ok := pkt.content.(*handshake); ok {
+		fragmentLength = c.maximumTransmissionUnit
+
+		handshakeFull, err := pkt.Marshal(math.MaxInt64)
+		if err != nil {
+			c.stopWithError(err)
+			return
+		}
+
+		c.log.Tracef("[handshake] -> %s", h.handshakeHeader.handshakeType.String())
+		c.handshakeCache.push(handshakeFull[0][recordLayerHeaderSize:], h.handshakeHeader.messageSequence, h.handshakeHeader.handshakeType, c.state.isClient)
+	}
+
+	packets, err := pkt.Marshal(fragmentLength)
 	if err != nil {
 		c.stopWithError(err)
 		return
 	}
 
-	if h, ok := pkt.content.(*handshake); ok {
-		c.log.Tracef("[handshake] -> %s", h.handshakeHeader.handshakeType.String())
-		c.handshakeCache.push(raw[recordLayerHeaderSize:], h.handshakeHeader.messageSequence, h.handshakeHeader.handshakeType, c.state.isClient)
-	}
+	for _, raw := range packets {
+		if shouldEncrypt {
+			raw, err = c.state.cipherSuite.encrypt(pkt, raw)
+			if err != nil {
+				c.stopWithError(err)
+				return
+			}
+		}
 
-	if shouldEncrypt {
-		raw, err = c.state.cipherSuite.encrypt(pkt, raw)
-		if err != nil {
+		if _, err := c.nextConn.Write(raw); err != nil {
 			c.stopWithError(err)
 			return
 		}
-	}
-
-	if _, err := c.nextConn.Write(raw); err != nil {
-		c.stopWithError(err)
 	}
 }
 

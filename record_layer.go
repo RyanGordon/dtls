@@ -25,21 +25,27 @@ type recordLayer struct {
 	content           content
 }
 
-func (r *recordLayer) Marshal() ([]byte, error) {
-	contentRaw, err := r.content.Marshal()
+func (r *recordLayer) Marshal(fragmentLen int) ([][]byte, error) {
+	fragments, err := r.content.Marshal(fragmentLen)
 	if err != nil {
 		return nil, err
 	}
 
-	r.recordLayerHeader.contentLen = uint16(len(contentRaw))
-	r.recordLayerHeader.contentType = r.content.contentType()
+	records := make([][]byte, 0)
+	for _, fragment := range fragments {
+		r.recordLayerHeader.contentLen = uint16(len(fragment))
+		r.recordLayerHeader.contentType = r.content.contentType()
 
-	headerRaw, err := r.recordLayerHeader.Marshal()
-	if err != nil {
-		return nil, err
+		headerRaw, err := r.recordLayerHeader.Marshal()
+		if err != nil {
+			return nil, err
+		}
+
+		record := append(headerRaw, fragment...)
+		records = append(records, record)
 	}
 
-	return append(headerRaw, contentRaw...), nil
+	return records, nil
 }
 
 func (r *recordLayer) Unmarshal(data []byte) error {

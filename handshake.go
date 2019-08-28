@@ -71,7 +71,7 @@ func (h handshake) contentType() contentType {
 	return contentTypeHandshake
 }
 
-func (h *handshake) Marshal() ([]byte, error) {
+func (h *handshake) Marshal(fragmentLen int) ([][]byte, error) {
 	if h.handshakeMessage == nil {
 		return nil, errHandshakeMessageUnset
 	} else if h.handshakeHeader.fragmentOffset != 0 {
@@ -83,15 +83,35 @@ func (h *handshake) Marshal() ([]byte, error) {
 		return nil, err
 	}
 
-	h.handshakeHeader.length = uint32(len(msg))
-	h.handshakeHeader.fragmentLength = h.handshakeHeader.length
-	h.handshakeHeader.handshakeType = h.handshakeMessage.handshakeType()
-	header, err := h.handshakeHeader.Marshal()
-	if err != nil {
-		return nil, err
+	fragments := make([][]byte, 0)
+	msgLen := len(msg)
+	fragmentLen -= (recordLayerHeaderSize + handshakeHeaderLength)
+	for startIdx := 0; startIdx <= msgLen; startIdx += fragmentLen {
+		endIdx := startIdx + fragmentLen
+		if endIdx > msgLen {
+			endIdx = msgLen
+		}
+
+		h.handshakeHeader.length = uint32(msgLen)
+		h.handshakeHeader.handshakeType = h.handshakeMessage.handshakeType()
+		h.handshakeHeader.fragmentOffset = uint32(startIdx)
+		h.handshakeHeader.fragmentLength = h.handshakeHeader.length
+		header, err := h.handshakeHeader.Marshal()
+		if err != nil {
+			return nil, err
+		}
+
+		fragment := append(header, msg[startIdx:endIdx]...)
+		fragments = append(fragments, fragment)
 	}
 
-	return append(header, msg...), nil
+	if len(fragments) == 0 {
+		return [][]byte{
+			{},
+		}, nil
+	}
+
+	return fragments, nil
 }
 
 func (h *handshake) Unmarshal(data []byte) error {

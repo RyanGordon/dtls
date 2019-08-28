@@ -126,8 +126,10 @@ func (a alert) contentType() contentType {
 	return contentTypeAlert
 }
 
-func (a *alert) Marshal() ([]byte, error) {
-	return []byte{byte(a.alertLevel), byte(a.alertDescription)}, nil
+func (a *alert) Marshal(fragmentLen int) ([][]byte, error) {
+	return [][]byte{
+		{byte(a.alertLevel), byte(a.alertDescription)},
+	}, nil
 }
 
 func (a *alert) Unmarshal(data []byte) error {
