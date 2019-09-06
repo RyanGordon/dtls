@@ -273,15 +273,20 @@ func (c *Conn) Write(p []byte) (int, error) {
 		return 0, c.getConnErr()
 	}
 
-	c.internalSend(&recordLayer{
-		recordLayerHeader: recordLayerHeader{
-			epoch:           c.getLocalEpoch(),
-			protocolVersion: protocolVersion1_2,
+	c.internalSend([]*packet{
+		{
+			record: &recordLayer{
+				recordLayerHeader: recordLayerHeader{
+					epoch:           c.getLocalEpoch(),
+					protocolVersion: protocolVersion1_2,
+				},
+				content: &applicationData{
+					data: p,
+				},
+			},
+			shouldEncrypt: true,
 		},
-		content: &applicationData{
-			data: p,
-		},
-	}, true)
+	})
 
 	return len(p), nil
 }
@@ -348,73 +353,132 @@ func (c *Conn) ExportKeyingMaterial(label string, context []byte, length int) ([
 	return prfPHash(c.state.masterSecret, seed, length, c.state.cipherSuite.hashFunc())
 }
 
-func (c *Conn) internalSend(record *recordLayer, shouldEncrypt bool) {
-	var packets [][]byte
+func (c *Conn) internalSend(packets []*packet) {
+	var rawPackets [][]byte
 
-	if h, ok := record.content.(*handshake); ok {
-		handshakeRaw, err := record.Marshal()
-		if err != nil {
-			c.stopWithError(err)
-			return
-		}
-
-		c.log.Tracef("[handshake] -> %s", h.handshakeHeader.handshakeType.String())
-		c.handshakeCache.push(handshakeRaw[recordLayerHeaderSize:], h.handshakeHeader.messageSequence, h.handshakeHeader.handshakeType, c.state.isClient)
-
-		handshakeFragments, err := c.fragmentHandshake(h)
-		if err != nil {
-			c.stopWithError(err)
-			return
-		}
-
-		for _, handshakeFragment := range handshakeFragments {
-			recordLayerHeader := &recordLayerHeader{
-				contentType:     record.recordLayerHeader.contentType,
-				contentLen:      uint16(len(handshakeFragment)),
-				protocolVersion: record.recordLayerHeader.protocolVersion,
-				epoch:           record.recordLayerHeader.epoch,
-				sequenceNumber:  atomic.LoadUint64(&c.state.localSequenceNumber),
-			}
-
-			atomic.AddUint64(&c.state.localSequenceNumber, 1)
-
-			recordLayerHeaderBytes, err := recordLayerHeader.Marshal()
-			if err != nil {
-				c.stopWithError(err)
-				return
-			}
-
-			packet := append(recordLayerHeaderBytes, handshakeFragment...)
-			packets = append(packets, packet)
-		}
-	} else {
-		record.recordLayerHeader.sequenceNumber = atomic.LoadUint64(&c.state.localSequenceNumber)
-		atomic.AddUint64(&c.state.localSequenceNumber, 1)
-
-		packet, err := record.Marshal()
-		if err != nil {
-			c.stopWithError(err)
-			return
-		}
-
-		packets = [][]byte{packet}
+	if len(packets) == 0 {
+		return
 	}
 
 	for _, packet := range packets {
-		if shouldEncrypt {
-			var err error
-			packet, err = c.state.cipherSuite.encrypt(record, packet)
+		if packet.resetLocalSequenceNumber {
+			atomic.StoreUint64(&c.state.localSequenceNumber, 0)
+		}
+
+		if h, ok := packet.record.content.(*handshake); ok {
+			rawHandshakePackets, err := c.processHandshakePacket(h, packet)
 			if err != nil {
 				c.stopWithError(err)
 				return
 			}
-		}
 
-		if _, err := c.nextConn.Write(packet); err != nil {
+			rawPackets = append(rawPackets, rawHandshakePackets...)
+		} else {
+			rawPacket, err := c.processPacket(packet)
+			if err != nil {
+				c.stopWithError(err)
+				return
+			}
+
+			rawPackets = append(rawPackets, rawPacket)
+		}
+	}
+
+	for _, rawPacket := range rawPackets {
+		if _, err := c.nextConn.Write(rawPacket); err != nil {
 			c.stopWithError(err)
 			return
 		}
 	}
+
+	/*var combinedRawPackets [][]byte
+	var currentCombinedRawPacket []byte
+	for _, rawPacket := range rawPackets {
+		if len(currentCombinedRawPacket) > 0 && len(currentCombinedRawPacket)+len(rawPacket) >= 1 {
+			combinedRawPackets = append(combinedRawPackets, currentCombinedRawPacket)
+			currentCombinedRawPacket = []byte{}
+		}
+
+		currentCombinedRawPacket = append(currentCombinedRawPacket, rawPacket...)
+	}
+
+	combinedRawPackets = append(combinedRawPackets, currentCombinedRawPacket)
+	fmt.Printf("%+v\n", combinedRawPackets)
+
+	for _, combinedRawPacket := range combinedRawPackets {
+		if _, err := c.nextConn.Write(combinedRawPacket); err != nil {
+			c.stopWithError(err)
+			return
+		}
+	}*/
+}
+
+func (c *Conn) processHandshakePacket(h *handshake, p *packet) ([][]byte, error) {
+	var rawPackets [][]byte
+	handshakeRaw, err := p.record.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	c.log.Tracef("[handshake] -> %s", h.handshakeHeader.handshakeType.String())
+	c.handshakeCache.push(handshakeRaw[recordLayerHeaderSize:], h.handshakeHeader.messageSequence, h.handshakeHeader.handshakeType, c.state.isClient)
+
+	handshakeFragments, err := c.fragmentHandshake(h)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, handshakeFragment := range handshakeFragments {
+		recordLayerHeader := &recordLayerHeader{
+			contentType:     p.record.recordLayerHeader.contentType,
+			contentLen:      uint16(len(handshakeFragment)),
+			protocolVersion: p.record.recordLayerHeader.protocolVersion,
+			epoch:           p.record.recordLayerHeader.epoch,
+			sequenceNumber:  atomic.LoadUint64(&c.state.localSequenceNumber),
+		}
+
+		atomic.AddUint64(&c.state.localSequenceNumber, 1)
+
+		recordLayerHeaderBytes, err := recordLayerHeader.Marshal()
+		if err != nil {
+			return nil, err
+		}
+
+		rawPacket := append(recordLayerHeaderBytes, handshakeFragment...)
+
+		if p.shouldEncrypt {
+			var err error
+			rawPacket, err = c.state.cipherSuite.encrypt(p.record, rawPacket)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		rawPackets = append(rawPackets, rawPacket)
+	}
+
+	return rawPackets, nil
+}
+
+func (c *Conn) processPacket(p *packet) ([]byte, error) {
+	record := p.record
+	record.recordLayerHeader.sequenceNumber = atomic.LoadUint64(&c.state.localSequenceNumber)
+	atomic.AddUint64(&c.state.localSequenceNumber, 1)
+
+	rawRecord, err := record.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	if p.shouldEncrypt {
+		var err error
+		rawRecord, err = c.state.cipherSuite.encrypt(record, rawRecord)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return rawRecord, nil
 }
 
 func (c *Conn) fragmentHandshake(h *handshake) ([][]byte, error) {
@@ -425,7 +489,8 @@ func (c *Conn) fragmentHandshake(h *handshake) ([][]byte, error) {
 
 	fragmentedHandshakes := make([][]byte, 0)
 
-	contentFragments := splitBytes(content, c.maximumTransmissionUnit)
+	splitLen := c.maximumTransmissionUnit - recordLayerHeaderSize - handshakeHeaderLength
+	contentFragments := splitBytes(content, splitLen)
 	if len(contentFragments) == 0 {
 		contentFragments = [][]byte{
 			{},
@@ -570,16 +635,21 @@ func (c *Conn) notify(level alertLevel, desc alertDescription) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.internalSend(&recordLayer{
-		recordLayerHeader: recordLayerHeader{
-			epoch:           c.getLocalEpoch(),
-			protocolVersion: protocolVersion1_2,
+	c.internalSend([]*packet{
+		{
+			record: &recordLayer{
+				recordLayerHeader: recordLayerHeader{
+					epoch:           c.getLocalEpoch(),
+					protocolVersion: protocolVersion1_2,
+				},
+				content: &alert{
+					alertLevel:       level,
+					alertDescription: desc,
+				},
+			},
+			shouldEncrypt: c.isHandshakeCompletedSuccessfully(),
 		},
-		content: &alert{
-			alertLevel:       level,
-			alertDescription: desc,
-		},
-	}, c.isHandshakeCompletedSuccessfully())
+	})
 }
 
 func (c *Conn) setHandshakeCompletedSuccessfully() {
